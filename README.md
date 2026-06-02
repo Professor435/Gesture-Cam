@@ -36,6 +36,8 @@
 
 ## 📥 Download
 
-**[GestureCam — Hand Tracking Visual Filters](sandbox:///mnt/agents/output/gesturecam.html)**
+**[GestureCam — Hand Tracking Visual Filters](https://github.com/Professor435/Gesture-Cam)**
 
 > The file is a single self-contained HTML file. It loads MediaPipe Hands from CDN, so an internet connection is required on first load. All processing happens locally in your browser — no video data is sent to any server.
+
+contact for more interesting Projects and Personal FYP's (professorshami435@gmail.com)
