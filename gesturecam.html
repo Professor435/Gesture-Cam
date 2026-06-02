@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GestureCam — Hand Tracking Visual Filters</title>
+
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* ===== FULLSCREEN WEBCAM ===== */
+        #webcam-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #input_video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+            opacity: 0; /* Hidden, we draw on canvas */
+        }
+
+        #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        /* ===== FILTER OVERLAY LAYERS ===== */
+        #filter-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+
+        /* ===== UI OVERLAY ===== */
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Top bar */
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 24px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+        }
+
+        .logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-dot {
+            width: 8px;
+            height: 8px;
+            background: #00ff88;
+            border-radius: 50%;
+            box-shadow: 0 0 12px #00ff88;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        .status-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.7);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .status-badge.active {
+            background: rgba(0,255,136,0.12);
+            border-color: rgba(0,255,136,0.4);
+            color: #00ff88;
+        }
+
+        /* Gesture indicator */
+        .gesture-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .gesture-display.show {
+            opacity: 1;
+        }
+
+        .gesture-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 8px;
+        }
+
+        .gesture-filter {
+            font-size: 48px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #a0a0ff 50%, #ff80a0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 60px rgba(160,160,255,0.3);
+        }
+
+        /* Bottom gesture cards */
+        .gesture-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 24px 32px 32px;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+        }
+
+        .gesture-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 16px 24px;
+            min-width: 160px;
+            text-align: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .gesture-card.active {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        .gesture-card .icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+            opacity: 0.6;
+            transition: opacity 0.3s;
+        }
+
+        .gesture-card.active .icon {
+            opacity: 1;
+        }
+
+        .gesture-card .label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.4);
+            margin-bottom: 4px;
+        }
+
+        .gesture-card .filter-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.8);
+        }
+
+        /* Fingertip dot */
+        .fingertip-dot {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(255,255,255,0.8), 0 0 40px rgba(255,255,255,0.4);
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.2s ease;
+        }
+
+        /* Loading screen */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #0a0a0f;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader-ring {
+            width: 60px;
+            height: 60px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #00ff88;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            letter-spacing: 3px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 24px;
+            text-transform: uppercase;
+        }
+
+        /* Start button */
+        #start-btn {
+            margin-top: 32px;
+            padding: 14px 40px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #0a0a0f;
+            background: #fff;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+
+        #start-btn:hover {
+            background: #00ff88;
+            transform: scale(1.05);
+        }
+
+        /* Corner decorations */
+        .corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(255,255,255,0.15);
+        }
+
+        .corner-tl { top: 80px; left: 32px; border-right: none; border-bottom: none; }
+        .corner-tr { top: 80px; right: 32px; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: 120px; left: 32px; border-right: none; border-top: none; }
+        .corner-br { bottom: 120px; right: 32px; border-left: none; border-top: none; }
+
+        /* FPS counter */
+        .fps-counter {
+            position: absolute;
+            top: 80px;
+            right: 32px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: rgba(255,255,255,0.3);
+        }
+
+        /* Hand skeleton overlay canvas */
+        #skeleton-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 3;
+            pointer-events: none;
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-ring"></div>
+        <div class="loading-text">Initializing Camera & MediaPipe</div>
+        <button id="start-btn">Start Experience</button>
+    </div>
+
+    <!-- Webcam Container -->
+    <div id="webcam-container">
+        <video id="input_video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <!-- Filter Overlay Canvas -->
+    <canvas id="filter-overlay"></canvas>
+
+    <!-- Skeleton Overlay -->
+    <canvas id="skeleton-canvas"></canvas>
+
+    <!-- Fingertip Dot -->
+    <div id="fingertip-dot" class="fingertip-dot" style="display:none;"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <div class="top-bar">
+            <div class="logo">
+                <div class="logo-dot"></div>
+                GESTURECAM
+            </div>
+            <div class="status-badge" id="status-badge">Initializing...</div>
+        </div>
+
+        <div class="gesture-display" id="gesture-display">
+            <div class="gesture-name" id="gesture-name">NO HAND DETECTED</div>
+            <div class="gesture-filter" id="gesture-filter">—</div>
+        </div>
+
+        <div class="fps-counter" id="fps-counter">0 FPS</div>
+
+        <!-- Corner decorations -->
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+
+        <!-- Gesture Cards -->
+        <div class="gesture-bar">
+            <div class="gesture-card" id="card-fist" data-gesture="fist">
+                <div class="icon">✊</div>
+                <div class="label">Fist</div>
+                <div class="filter-name">Dither</div>
+            </div>
+            <div class="gesture-card" id="card-peace" data-gesture="peace">
+                <div class="icon">✌️</div>
+                <div class="label">Peace Sign</div>
+                <div class="filter-name">VHS + Chromatic</div>
+            </div>
+            <div class="gesture-card" id="card-point" data-gesture="point">
+                <div class="icon">☝️</div>
+                <div class="label">Index Finger</div>
+                <div class="filter-name">Spotlight</div>
+            </div>
+            <div class="gesture-card" id="card-open" data-gesture="open">
+                <div class="icon">🖐️</div>
+                <div class="label">Open Hand</div>
+                <div class="filter-name">Water Ripple</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== STATE =====
+        const state = {
+            currentGesture: 'none',
+            prevGesture: 'none',
+            handDetected: false,
+            indexTip: { x: 0, y: 0 },
+            landmarks: null,
+            frameCount: 0,
+            lastFpsTime: performance.now(),
+            fps: 0,
+            filterIntensity: 0,
+            time: 0
+        };
+
+        // ===== DOM ELEMENTS =====
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const filterCanvas = document.getElementById('filter-overlay');
+        const filterCtx = filterCanvas.getContext('2d');
+        const skeletonCanvas = document.getElementById('skeleton-canvas');
+        const skeletonCtx = skeletonCanvas.getContext('2d');
+        const fingertipDot = document.getElementById('fingertip-dot');
+        const statusBadge = document.getElementById('status-badge');
+        const gestureDisplay = document.getElementById('gesture-display');
+        const gestureName = document.getElementById('gesture-name');
+        const gestureFilter = document.getElementById('gesture-filter');
+        const fpsCounter = document.getElementById('fps-counter');
+        const loadingScreen = document.getElementById('loading-screen');
+        const startBtn = document.getElementById('start-btn');
+
+        // ===== RESIZE CANVASES =====
+        function resizeCanvases() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            canvasElement.width = w;
+            canvasElement.height = h;
+            filterCanvas.width = w;
+            filterCanvas.height = h;
+            skeletonCanvas.width = w;
+            skeletonCanvas.height = h;
+        }
+        resizeCanvases();
+        window.addEventListener('resize', resizeCanvases);
+
+        // ===== GESTURE RECOGNITION =====
+        function detectGesture(landmarks) {
+            // Finger tip indices: 8 (index), 12 (middle), 16 (ring), 20 (pinky)
+            // Finger PIP indices: 6, 10, 14, 18
+            // Thumb: 4 (tip), 2 (MCP)
+
+            const fingers = [];
+
+            // Thumb (check x distance for open/closed, considering mirrored)
+            const thumbTip = landmarks[4];
+            const thumbIP = landmarks[3];
+            const thumbOpen = Math.abs(thumbTip.x - thumbIP.x) > 0.03;
+            fingers.push(thumbOpen);
+
+            // Index
+            fingers.push(landmarks[8].y < landmarks[6].y);
+            // Middle
+            fingers.push(landmarks[12].y < landmarks[10].y);
+            // Ring
+            fingers.push(landmarks[16].y < landmarks[14].y);
+            // Pinky
+            fingers.push(landmarks[20].y < landmarks[18].y);
+
+            const openCount = fingers.filter(f => f).length;
+
+            // Detect gestures
+            if (openCount === 0) return 'fist';
+            if (fingers[1] && fingers[2] && !fingers[3] && !fingers[4]) return 'peace';
+            if (fingers[1] && !fingers[2] && !fingers[3] && !fingers[4]) return 'point';
+            if (openCount >= 4) return 'open';
+
+            return 'none';
+        }
+
+        // ===== FILTER RENDERERS =====
+
+        // 1. DITHER FILTER (Fist)
+        function renderDither(ctx, w, h, time) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            const threshold = 128;
+
+            for (let y = 0; y < h; y += 2) {
+                for (let x = 0; x < w; x += 2) {
+                    const i = (y * w + x) * 4;
+                    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+                    const val = avg > threshold ? 255 : 0;
+
+                    // Apply dither pattern
+                    const pattern = (x + y) % 4;
+                    const ditherVal = avg > (threshold + (pattern - 2) * 40) ? 255 : 0;
+
+                    data[i] = ditherVal;
+                    data[i+1] = ditherVal;
+                    data[i+2] = ditherVal;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // Scanline overlay
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            for (let y = 0; y < h; y += 4) {
+                ctx.fillRect(0, y, w, 2);
+            }
+        }
+
+        // 2. VHS + CHROMATIC ABERRATION (Peace Sign)
+        function renderVHS(ctx, w, h, time) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            const temp = new Uint8ClampedArray(data);
+
+            const shift = Math.sin(time * 0.003) * 8 + 4;
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+
+                    // Red channel shifted left
+                    const rx = Math.max(0, x - shift);
+                    const ri = (y * w + Math.floor(rx)) * 4;
+                    data[i] = temp[ri];
+
+                    // Blue channel shifted right
+                    const bx = Math.min(w - 1, x + shift);
+                    const bi = (y * w + Math.floor(bx)) * 4;
+                    data[i + 2] = temp[bi + 2];
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // VHS scanlines
+            ctx.fillStyle = 'rgba(0,0,0,0.15)';
+            for (let y = 0; y < h; y += 3) {
+                ctx.fillRect(0, y, w, 1);
+            }
+
+            // VHS noise lines
+            const noiseY = Math.floor(Math.sin(time * 0.01) * h * 0.3 + h * 0.5);
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(0, noiseY, w, 3);
+            ctx.fillRect(0, noiseY + 20, w, 1);
+
+            // Vignette
+            const gradient = ctx.createRadialGradient(w/2, h/2, h*0.3, w/2, h/2, h*0.8);
+            gradient.addColorStop(0, 'rgba(0,0,0,0)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, w, h);
+        }
+
+        // 3. SPOTLIGHT FILTER (Index Finger)
+        function renderSpotlight(ctx, w, h, time, tipX, tipY) {
+            // Create dark overlay
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(0, 0, w, h);
+
+            // Spotlight at fingertip
+            const radius = 120 + Math.sin(time * 0.005) * 20;
+            const gradient = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, radius);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.3)');
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.1)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner bright spot
+            ctx.globalCompositeOperation = 'source-over';
+            const innerGrad = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, radius * 0.5);
+            innerGrad.addColorStop(0, 'rgba(255,255,200,0.2)');
+            innerGrad.addColorStop(1, 'rgba(255,255,200,0)');
+            ctx.fillStyle = innerGrad;
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, radius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glow ring
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // 4. WATER RIPPLE FILTER (Open Hand)
+        let ripplePhase = 0;
+        function renderWaterRipple(ctx, w, h, time) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            const temp = new Uint8ClampedArray(data);
+
+            ripplePhase += 0.02;
+            const centerX = w / 2;
+            const centerY = h / 2;
+
+            for (let y = 0; y < h; y += 2) {
+                for (let x = 0; x < w; x += 2) {
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    const wave = Math.sin(dist * 0.05 - ripplePhase * 3) * 3;
+                    const wave2 = Math.cos(dist * 0.03 + ripplePhase * 2) * 2;
+
+                    const srcX = Math.floor(Math.max(0, Math.min(w - 1, x + wave + wave2)));
+                    const srcY = Math.floor(Math.max(0, Math.min(h - 1, y + wave)));
+
+                    const srcIdx = (srcY * w + srcX) * 4;
+                    const dstIdx = (y * w + x) * 4;
+
+                    data[dstIdx] = temp[srcIdx];
+                    data[dstIdx + 1] = temp[srcIdx + 1];
+                    data[dstIdx + 2] = temp[srcIdx + 2];
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // Ripple rings
+            ctx.strokeStyle = 'rgba(100,200,255,0.08)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                const r = ((ripplePhase * 50 + i * 80) % Math.max(w, h));
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        // ===== DRAW HAND SKELETON =====
+        function drawSkeleton(landmarks, w, h) {
+            skeletonCtx.clearRect(0, 0, w, h);
+
+            if (!landmarks) return;
+
+            const connections = [
+                [0,1],[1,2],[2,3],[3,4], // Thumb
+                [0,5],[5,6],[6,7],[7,8], // Index
+                [0,9],[9,10],[10,11],[11,12], // Middle
+                [0,13],[13,14],[14,15],[15,16], // Ring
+                [0,17],[17,18],[18,19],[19,20], // Pinky
+                [5,9],[9,13],[13,17] // Palm
+            ];
+
+            // Draw connections
+            skeletonCtx.strokeStyle = 'rgba(0,255,136,0.4)';
+            skeletonCtx.lineWidth = 2;
+            skeletonCtx.lineCap = 'round';
+
+            for (const [start, end] of connections) {
+                const x1 = landmarks[start].x * w;
+                const y1 = landmarks[start].y * h;
+                const x2 = landmarks[end].x * w;
+                const y2 = landmarks[end].y * h;
+
+                skeletonCtx.beginPath();
+                skeletonCtx.moveTo(x1, y1);
+                skeletonCtx.lineTo(x2, y2);
+                skeletonCtx.stroke();
+            }
+
+            // Draw landmarks
+            for (let i = 0; i < landmarks.length; i++) {
+                const x = landmarks[i].x * w;
+                const y = landmarks[i].y * h;
+
+                skeletonCtx.fillStyle = i === 8 ? '#fff' : 'rgba(0,255,136,0.6)';
+                skeletonCtx.beginPath();
+                skeletonCtx.arc(x, y, i === 8 ? 6 : 3, 0, Math.PI * 2);
+                skeletonCtx.fill();
+            }
+        }
+
+        // ===== UPDATE UI =====
+        function updateUI(gesture) {
+            // Update cards
+            document.querySelectorAll('.gesture-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.gesture === gesture);
+            });
+
+            // Update gesture display
+            if (gesture !== 'none') {
+                gestureDisplay.classList.add('show');
+                const names = {
+                    'fist': 'FIST DETECTED',
+                    'peace': 'PEACE SIGN',
+                    'point': 'INDEX FINGER',
+                    'open': 'OPEN HAND'
+                };
+                const filters = {
+                    'fist': 'Dither',
+                    'peace': 'VHS + Chromatic',
+                    'point': 'Spotlight',
+                    'open': 'Water Ripple'
+                };
+                gestureName.textContent = names[gesture] || '';
+                gestureFilter.textContent = filters[gesture] || '';
+            } else {
+                gestureDisplay.classList.remove('show');
+            }
+        }
+
+        // ===== MEDIAPIPE HAND TRACKING =====
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        hands.onResults((results) => {
+            const w = canvasElement.width;
+            const h = canvasElement.height;
+
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, w, h);
+
+            // Draw video frame
+            if (results.image) {
+                canvasCtx.drawImage(results.image, 0, 0, w, h);
+            }
+
+            // Process hand landmarks
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                state.landmarks = landmarks;
+                state.handDetected = true;
+
+                // Detect gesture
+                const gesture = detectGesture(landmarks);
+                if (gesture !== state.currentGesture) {
+                    state.prevGesture = state.currentGesture;
+                    state.currentGesture = gesture;
+                    state.filterIntensity = 0;
+                }
+
+                // Get index fingertip position
+                const tip = landmarks[8];
+                state.indexTip.x = tip.x * w;
+                state.indexTip.y = tip.y * h;
+
+                // Update fingertip dot
+                fingertipDot.style.display = 'block';
+                fingertipDot.style.left = (tip.x * 100) + '%';
+                fingertipDot.style.top = (tip.y * 100) + '%';
+
+                // Draw skeleton
+                drawSkeleton(landmarks, w, h);
+
+                // Update status
+                statusBadge.textContent = 'Tracking Active';
+                statusBadge.classList.add('active');
+
+                // Update UI
+                updateUI(gesture);
+
+            } else {
+                state.handDetected = false;
+                state.landmarks = null;
+                state.currentGesture = 'none';
+                fingertipDot.style.display = 'none';
+                skeletonCtx.clearRect(0, 0, w, h);
+                statusBadge.textContent = 'No Hand Detected';
+                statusBadge.classList.remove('active');
+                updateUI('none');
+            }
+
+            // Apply filter
+            applyFilter(w, h);
+
+            // FPS counter
+            state.frameCount++;
+            const now = performance.now();
+            if (now - state.lastFpsTime >= 1000) {
+                state.fps = state.frameCount;
+                state.frameCount = 0;
+                state.lastFpsTime = now;
+                fpsCounter.textContent = state.fps + ' FPS';
+            }
+        });
+
+        // ===== APPLY FILTER =====
+        function applyFilter(w, h) {
+            state.time = performance.now();
+
+            // Copy current frame to filter canvas
+            filterCtx.clearRect(0, 0, w, h);
+            filterCtx.drawImage(canvasElement, 0, 0, w, h);
+
+            switch (state.currentGesture) {
+                case 'fist':
+                    renderDither(filterCtx, w, h, state.time);
+                    break;
+                case 'peace':
+                    renderVHS(filterCtx, w, h, state.time);
+                    break;
+                case 'point':
+                    renderSpotlight(filterCtx, w, h, state.time, state.indexTip.x, state.indexTip.y);
+                    break;
+                case 'open':
+                    renderWaterRipple(filterCtx, w, h, state.time);
+                    break;
+                default:
+                    // No filter - just show normal feed
+                    filterCtx.clearRect(0, 0, w, h);
+            }
+        }
+
+        // ===== CAMERA SETUP =====
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 1280,
+            height: 720
+        });
+
+        // ===== START BUTTON =====
+        startBtn.addEventListener('click', async () => {
+            startBtn.textContent = 'Starting...';
+            try {
+                await camera.start();
+                loadingScreen.classList.add('hidden');
+            } catch (err) {
+                console.error('Camera error:', err);
+                startBtn.textContent = 'Camera Error - Retry';
+            }
+        });
+
+        // ===== ANIMATION LOOP for smooth UI =====
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Smooth filter transitions could go here
+        }
+        animate();
+    </script>
+</body>
+</html>
