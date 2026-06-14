@@ -10,7 +10,7 @@
 | **Prompt 2** | Detect 4 gestures from 21 landmarks | Fist ✊, Peace Sign ✌️, Index Finger ☝️, Open Hand 🖐️ |
 | **Prompt 3** | Map gestures to visual filters | ✊ **Dither** (retro pixelated scanlines) / ✌️ **VHS + Chromatic Aberration** (RGB shift + noise) / ☝️ **Spotlight** (follows your fingertip) / 🖐️ **Water Ripple** (distortion waves from center) |
 
----
+--- 
 
 ## 🎨 Design Highlights
 
