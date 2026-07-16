@@ -2,7 +2,7 @@
  
 
  
-## ✨ Features
+## ✨ Features 
 
 | Prompt | Feature | Implementation |
 |--------|---------|----------------|
