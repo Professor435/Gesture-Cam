@@ -3,7 +3,7 @@
 
  
 ## ✨ Features 
- 
+  
 | Prompt | Feature | Implementation |
 |--------|---------|----------------|
 | **Prompt 1** | Fullscreen webcam + white dot on index fingertip | MediaPipe Hands tracks 21 landmarks, a glowing white dot follows your index fingertip in real-time |
