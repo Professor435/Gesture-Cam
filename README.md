@@ -4,7 +4,7 @@
  
 ## ✨ Features  
   
-| Prompt | Feature | Implementation |
+| Prompt | Feature | Implementation | 
 |--------|---------|----------------|
 | **Prompt 1** | Fullscreen webcam + white dot on index fingertip | MediaPipe Hands tracks 21 landmarks, a glowing white dot follows your index fingertip in real-time |
 | **Prompt 2** | Detect 4 gestures from 21 landmarks | Fist ✊, Peace Sign ✌️, Index Finger ☝️, Open Hand 🖐️ |
